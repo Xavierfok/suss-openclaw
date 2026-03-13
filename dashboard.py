@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+import io
 from datetime import datetime
 
 # Config
@@ -27,15 +28,24 @@ def load_leads():
 
 
 def load_tracking():
-    if not os.path.exists(TRACKING_FILE):
-        return {}
-    with open(TRACKING_FILE, "r") as f:
-        return json.load(f)
+    """Load tracking from session state (cloud) or file (local)."""
+    if "tracking" not in st.session_state:
+        if os.path.exists(TRACKING_FILE):
+            with open(TRACKING_FILE, "r") as f:
+                st.session_state.tracking = json.load(f)
+        else:
+            st.session_state.tracking = {}
+    return st.session_state.tracking
 
 
 def save_tracking(tracking):
-    with open(TRACKING_FILE, "w") as f:
-        json.dump(tracking, f, indent=2, ensure_ascii=False)
+    """Save tracking to session state, and to file if possible."""
+    st.session_state.tracking = tracking
+    try:
+        with open(TRACKING_FILE, "w") as f:
+            json.dump(tracking, f, indent=2, ensure_ascii=False)
+    except OSError:
+        pass  # Read-only filesystem (Streamlit Cloud) — session state still works
 
 
 # --- Main App ---
@@ -194,32 +204,40 @@ for i, lead in enumerate(sorted(filtered_leads, key=lambda x: x.get("priority_sc
 # --- Export ---
 st.sidebar.markdown("---")
 st.sidebar.header("Export")
-if st.sidebar.button("Export to Excel"):
-    rows = []
-    for lead in leads:
-        url = lead.get("linkedin_url", "")
-        track = tracking.get(url, {})
-        rows.append({
-            "Priority": lead.get("priority_score", 0),
-            "Name": lead.get("name", ""),
-            "Title": lead.get("title", ""),
-            "Company": lead.get("company", ""),
-            "Industry": lead.get("industry", ""),
-            "LinkedIn URL": url,
-            "Status": track.get("status", "Not Contacted"),
-            "Date Contacted": track.get("contacted_date", ""),
-            "Tone Profile": lead.get("tone_profile", ""),
-            "Connection Message": lead.get("connection_message", ""),
-            "Follow-up Message": lead.get("followup_message", ""),
-            "Key Interests": ", ".join(lead.get("key_interests", [])) if isinstance(lead.get("key_interests"), list) else "",
-            "Talking Points": "\n".join(lead.get("talking_points", [])) if isinstance(lead.get("talking_points"), list) else "",
-            "Google Background": lead.get("google_background", ""),
-            "Priority Reason": lead.get("priority_reason", ""),
-            "Notes": track.get("notes", ""),
-        })
-    df = pd.DataFrame(rows).sort_values("Priority", ascending=False)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", f"heyva_indonesia_leads_{timestamp}.xlsx")
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    df.to_excel(output_path, index=False)
-    st.sidebar.success(f"Exported to {output_path}")
+
+# Build export dataframe
+rows = []
+for lead in leads:
+    url = lead.get("linkedin_url", "")
+    track = tracking.get(url, {})
+    rows.append({
+        "Priority": lead.get("priority_score", 0),
+        "Name": lead.get("name", ""),
+        "Title": lead.get("title", ""),
+        "Company": lead.get("company", ""),
+        "Industry": lead.get("industry", ""),
+        "LinkedIn URL": url,
+        "Status": track.get("status", "Not Contacted"),
+        "Date Contacted": track.get("contacted_date", ""),
+        "Tone Profile": lead.get("tone_profile", ""),
+        "Connection Message": lead.get("connection_message", ""),
+        "Follow-up Message": lead.get("followup_message", ""),
+        "Key Interests": ", ".join(lead.get("key_interests", [])) if isinstance(lead.get("key_interests"), list) else "",
+        "Talking Points": "\n".join(lead.get("talking_points", [])) if isinstance(lead.get("talking_points"), list) else "",
+        "Google Background": lead.get("google_background", ""),
+        "Priority Reason": lead.get("priority_reason", ""),
+        "Notes": track.get("notes", ""),
+    })
+df = pd.DataFrame(rows).sort_values("Priority", ascending=False)
+
+# Download button (works on Streamlit Cloud)
+buffer = io.BytesIO()
+df.to_excel(buffer, index=False, engine="openpyxl")
+buffer.seek(0)
+
+st.sidebar.download_button(
+    label="Download Excel",
+    data=buffer,
+    file_name=f"heyva_leads_{datetime.now().strftime('%Y%m%d')}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+)
