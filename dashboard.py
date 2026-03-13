@@ -18,7 +18,7 @@ st.set_page_config(page_title="Heyva Health Leads", page_icon="🏥", layout="wi
 
 # --- Data Loading ---
 
-@st.cache_data(ttl=60)  # refresh every 60 seconds
+@st.cache_data(ttl=3600)  # refresh every hour
 def load_leads():
     if not os.path.exists(ANALYZED_FILE):
         return []
