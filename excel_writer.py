@@ -17,8 +17,12 @@ def load_analyzed_leads(path: str) -> list[dict]:
         return json.load(f)
 
 
-def format_social_links(profiles: dict) -> str:
+def format_social_links(profiles) -> str:
     """Format social profile URLs into a readable string."""
+    if isinstance(profiles, list):
+        return "None found"
+    if not isinstance(profiles, dict):
+        return "None found"
     links = []
     for platform, url in profiles.items():
         if url:
